@@ -17,13 +17,48 @@ export default function Trainer() {
   const [bpm, setBpm] = useState(90);
   const [left, setLeft] = useState(1);
   const [right, setRight] = useState(1);
+  const [soundReady, setSoundReady] = useState(false);
   const [pulses, setPulses] = useState({ left: 0, right: 0, leftSync: true, rightSync: true });
   const timing = useRef({ origin: 0, leftStep: -1, rightStep: -1 });
   const values = useRef({ bpm, left, right });
+  const audio = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     values.current = { bpm, left, right };
   }, [bpm, left, right]);
+
+  useEffect(() => {
+    const enableSound = () => {
+      if (!audio.current) audio.current = new AudioContext();
+      void audio.current.resume();
+      setSoundReady(true);
+    };
+
+    window.addEventListener("pointerdown", enableSound, { once: true });
+    window.addEventListener("keydown", enableSound, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", enableSound);
+      window.removeEventListener("keydown", enableSound);
+    };
+  }, []);
+
+  const playNote = (frequency: number) => {
+    const context = audio.current;
+    if (!context || context.state !== "running") return;
+
+    const now = context.currentTime;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(frequency, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.095);
+  };
 
   useEffect(() => {
     timing.current.origin = performance.now();
@@ -40,6 +75,9 @@ export default function Trainer() {
       if (leftStep !== timing.current.leftStep || rightStep !== timing.current.rightStep) {
         const leftChanged = leftStep !== timing.current.leftStep;
         const rightChanged = rightStep !== timing.current.rightStep;
+        if (leftChanged && rightChanged) playNote(261.63);
+        else if (leftChanged) playNote(329.63);
+        else playNote(392);
         timing.current.leftStep = leftStep;
         timing.current.rightStep = rightStep;
         setPulses((previous) => ({
@@ -83,7 +121,7 @@ export default function Trainer() {
         <div className="center-line" aria-hidden="true" />
       </section>
 
-      <TempoControl bpm={bpm} onChange={setBpm} />
+      <TempoControl bpm={bpm} soundReady={soundReady} onChange={setBpm} />
     </main>
   );
 }
@@ -149,7 +187,15 @@ function RhythmPad({
   );
 }
 
-function TempoControl({ bpm, onChange }: { bpm: number; onChange: (bpm: number) => void }) {
+function TempoControl({
+  bpm,
+  soundReady,
+  onChange,
+}: {
+  bpm: number;
+  soundReady: boolean;
+  onChange: (bpm: number) => void;
+}) {
   const drag = useRef({ x: 0, bpm: 0 });
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -191,6 +237,7 @@ function TempoControl({ bpm, onChange }: { bpm: number; onChange: (bpm: number) 
         <span>BPM</span>
       </div>
       <span className="tempo-direction">faster</span>
+      <span className="sound-status">{soundReady ? "sound on" : "tap to enable sound"}</span>
       <div className="tempo-track" aria-hidden="true">
         <div className="tempo-fill" style={{ width: `${((bpm - MIN_BPM) / (MAX_BPM - MIN_BPM)) * 100}%` }} />
       </div>

@@ -184,6 +184,18 @@ input {
   justify-self: end;
 }
 
+.sound-status {
+  position: absolute;
+  top: 0.8rem;
+  left: 50%;
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  opacity: 0.4;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
 .tempo-track {
   position: absolute;
   right: 0;
