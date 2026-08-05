@@ -8,6 +8,7 @@ const MIN_BPM = 30;
 const MAX_BPM = 240;
 
 type RhythmSide = "left" | "right";
+type VisualMode = "flash" | "highway";
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
@@ -35,6 +36,9 @@ export default function Trainer() {
   const [left, setLeft] = useState(1);
   const [right, setRight] = useState(1);
   const [soundReady, setSoundReady] = useState(false);
+  const [visualMode, setVisualMode] = useState<VisualMode>("flash");
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [playhead, setPlayhead] = useState(0);
   const [pulses, setPulses] = useState({ left: 0, right: 0, leftSync: true, rightSync: true });
   const timing = useRef({ origin: 0, leftStep: -1, rightStep: -1 });
   const values = useRef({ bpm, left, right });
@@ -69,12 +73,17 @@ export default function Trainer() {
   useEffect(() => {
     timing.current.origin = performance.now();
     let frame = 0;
+    let lastVisualUpdate = 0;
 
     const tick = (now: number) => {
       const current = values.current;
       const beatLength = 60_000 / current.bpm;
       const measureLength = beatLength * 4;
       const elapsed = now - timing.current.origin;
+      if (now - lastVisualUpdate > 32) {
+        lastVisualUpdate = now;
+        setPlayhead(elapsed);
+      }
       const leftStep = Math.floor(elapsed / (measureLength / current.left));
       const rightStep = Math.floor(elapsed / (measureLength / current.right));
 
@@ -111,13 +120,17 @@ export default function Trainer() {
   };
 
   return (
-    <main className="trainer">
+    <main className={`trainer trainer--${visualMode}`}>
       <section className="rhythms" aria-label="Rhythm subdivisions">
         <RhythmPad
           side="left"
           value={left}
           pulse={pulses.left}
           synchronized={pulses.leftSync}
+          visualMode={visualMode}
+          playhead={playhead}
+          bpm={bpm}
+          otherValue={right}
           onChange={(amount) => changeSubdivision("left", amount)}
         />
         <RhythmPad
@@ -125,10 +138,25 @@ export default function Trainer() {
           value={right}
           pulse={pulses.right}
           synchronized={pulses.rightSync}
+          visualMode={visualMode}
+          playhead={playhead}
+          bpm={bpm}
+          otherValue={left}
           onChange={(amount) => changeSubdivision("right", amount)}
         />
         <div className="center-line" aria-hidden="true" />
+        {visualMode === "highway" && <div className="shared-hit-line" aria-hidden="true" />}
       </section>
+
+      <Options
+        open={optionsOpen}
+        visualMode={visualMode}
+        onToggle={() => setOptionsOpen((open) => !open)}
+        onModeChange={(mode) => {
+          setVisualMode(mode);
+          setOptionsOpen(false);
+        }}
+      />
 
       <TempoControl bpm={bpm} soundReady={soundReady} onChange={setBpm} />
     </main>
@@ -140,12 +168,20 @@ function RhythmPad({
   value,
   pulse,
   synchronized,
+  visualMode,
+  playhead,
+  bpm,
+  otherValue,
   onChange,
 }: {
   side: RhythmSide;
   value: number;
   pulse: number;
   synchronized: boolean;
+  visualMode: VisualMode;
+  playhead: number;
+  bpm: number;
+  otherValue: number;
   onChange: (amount: number) => void;
 }) {
   const drag = useRef({ y: 0, value: 0 });
@@ -188,10 +224,122 @@ function RhythmPad({
         if (event.key === "ArrowDown" || event.key === "ArrowLeft") onChange(-1);
       }}
     >
-      <div className={`flash${synchronized ? " flash--sync" : ""}`} key={pulse} aria-hidden="true" />
+      {visualMode === "flash" ? (
+        <div className={`flash${synchronized ? " flash--sync" : ""}`} key={pulse} aria-hidden="true" />
+      ) : (
+        <Highway
+          side={side}
+          value={value}
+          otherValue={otherValue}
+          bpm={bpm}
+          playhead={playhead}
+          pulse={pulse}
+          synchronized={synchronized}
+        />
+      )}
       <span className="pad-label">{side}</span>
       <strong className="rhythm-number">{value}</strong>
       <span className="drag-hint">drag up · down</span>
+    </div>
+  );
+}
+
+function Highway({
+  side,
+  value,
+  otherValue,
+  bpm,
+  playhead,
+  pulse,
+  synchronized,
+}: {
+  side: RhythmSide;
+  value: number;
+  otherValue: number;
+  bpm: number;
+  playhead: number;
+  pulse: number;
+  synchronized: boolean;
+}) {
+  const measureLength = (60_000 / bpm) * 4;
+  const interval = measureLength / value;
+  const otherInterval = measureLength / otherValue;
+  const travelTime = 2400;
+  const firstEvent = Math.ceil(playhead / interval);
+  const lastEvent = Math.floor((playhead + travelTime) / interval);
+  const notes = [];
+
+  for (let event = firstEvent; event <= lastEvent; event += 1) {
+    const eventTime = event * interval;
+    const timeUntilHit = eventTime - playhead;
+    const top = 82 - (timeUntilHit / travelTime) * 72;
+    const otherStep = eventTime / otherInterval;
+    const isJoint = Math.abs(otherStep - Math.round(otherStep)) < 0.0001;
+    notes.push(
+      <span
+        className={`highway-note${isJoint ? " highway-note--sync" : ""}`}
+        key={event}
+        style={{ top: `${top}%` }}
+      />,
+    );
+  }
+
+  return (
+    <div className={`highway highway--${side}`} aria-hidden="true">
+      <div className="lane-rail lane-rail--left" />
+      <div className="lane-rail lane-rail--right" />
+      {notes}
+      <span className={`hit-burst${synchronized ? " hit-burst--sync" : ""}`} key={pulse} />
+    </div>
+  );
+}
+
+function Options({
+  open,
+  visualMode,
+  onToggle,
+  onModeChange,
+}: {
+  open: boolean;
+  visualMode: VisualMode;
+  onToggle: () => void;
+  onModeChange: (mode: VisualMode) => void;
+}) {
+  return (
+    <div className="options">
+      <button
+        className="options-button"
+        type="button"
+        aria-label="Visual options"
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6" />
+        </svg>
+      </button>
+      {open && (
+        <div className="options-panel">
+          <span className="options-title">Visual mode</span>
+          <div className="mode-picker">
+            <button
+              type="button"
+              className={visualMode === "flash" ? "is-selected" : ""}
+              onClick={() => onModeChange("flash")}
+            >
+              Flash
+            </button>
+            <button
+              type="button"
+              className={visualMode === "highway" ? "is-selected" : ""}
+              onClick={() => onModeChange("highway")}
+            >
+              Highway
+            </button>
+          </div>
+          <p>Notes arrive at the line when they sound.</p>
+        </div>
+      )}
     </div>
   );
 }
