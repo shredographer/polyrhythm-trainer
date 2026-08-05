@@ -13,6 +13,23 @@ function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
+function playTone(context: AudioContext, frequency: number, volume = 0.22) {
+  if (context.state !== "running") return;
+
+  const now = context.currentTime;
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(frequency, now);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(volume, now + 0.006);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start(now);
+  oscillator.stop(now + 0.095);
+}
+
 export default function Trainer() {
   const [bpm, setBpm] = useState(90);
   const [left, setLeft] = useState(1);
@@ -22,6 +39,7 @@ export default function Trainer() {
   const timing = useRef({ origin: 0, leftStep: -1, rightStep: -1 });
   const values = useRef({ bpm, left, right });
   const audio = useRef<AudioContext | null>(null);
+  const soundEnabled = useRef(false);
 
   useEffect(() => {
     values.current = { bpm, left, right };
@@ -29,36 +47,24 @@ export default function Trainer() {
 
   useEffect(() => {
     const enableSound = () => {
-      if (!audio.current) audio.current = new AudioContext();
-      void audio.current.resume();
-      setSoundReady(true);
+      const context = audio.current ?? new AudioContext();
+      audio.current = context;
+
+      void context.resume().then(() => {
+        if (soundEnabled.current) return;
+        soundEnabled.current = true;
+        setSoundReady(true);
+        playTone(context, 261.63, 0.28);
+      });
     };
 
-    window.addEventListener("pointerdown", enableSound, { once: true });
-    window.addEventListener("keydown", enableSound, { once: true });
+    window.addEventListener("pointerdown", enableSound);
+    window.addEventListener("keydown", enableSound);
     return () => {
       window.removeEventListener("pointerdown", enableSound);
       window.removeEventListener("keydown", enableSound);
     };
   }, []);
-
-  const playNote = (frequency: number) => {
-    const context = audio.current;
-    if (!context || context.state !== "running") return;
-
-    const now = context.currentTime;
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(frequency, now);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.006);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
-    oscillator.connect(gain);
-    gain.connect(context.destination);
-    oscillator.start(now);
-    oscillator.stop(now + 0.095);
-  };
 
   useEffect(() => {
     timing.current.origin = performance.now();
@@ -75,9 +81,12 @@ export default function Trainer() {
       if (leftStep !== timing.current.leftStep || rightStep !== timing.current.rightStep) {
         const leftChanged = leftStep !== timing.current.leftStep;
         const rightChanged = rightStep !== timing.current.rightStep;
-        if (leftChanged && rightChanged) playNote(261.63);
-        else if (leftChanged) playNote(329.63);
-        else playNote(392);
+        const context = audio.current;
+        if (context) {
+          if (leftChanged && rightChanged) playTone(context, 261.63);
+          else if (leftChanged) playTone(context, 329.63);
+          else playTone(context, 392);
+        }
         timing.current.leftStep = leftStep;
         timing.current.rightStep = rightStep;
         setPulses((previous) => ({
