@@ -32,9 +32,10 @@ export default function Trainer() {
     const tick = (now: number) => {
       const current = values.current;
       const beatLength = 60_000 / current.bpm;
+      const measureLength = beatLength * 4;
       const elapsed = now - timing.current.origin;
-      const leftStep = Math.floor(elapsed / (beatLength / current.left));
-      const rightStep = Math.floor(elapsed / (beatLength / current.right));
+      const leftStep = Math.floor(elapsed / (measureLength / current.left));
+      const rightStep = Math.floor(elapsed / (measureLength / current.right));
 
       if (leftStep !== timing.current.leftStep || rightStep !== timing.current.rightStep) {
         const leftChanged = leftStep !== timing.current.leftStep;
