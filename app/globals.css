@@ -1,0 +1,220 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700&display=swap");
+
+:root {
+  --ink: #11110f;
+  --paper: #f2efe7;
+  --acid: #d8ff43;
+  --orange: #ff7143;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--ink);
+  color: var(--ink);
+}
+
+body {
+  font-family: "DM Mono", monospace;
+  overscroll-behavior: none;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.trainer {
+  display: grid;
+  grid-template-rows: 80dvh 20dvh;
+  width: 100vw;
+  height: 100dvh;
+}
+
+.rhythms {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 0;
+}
+
+.center-line {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: rgba(242, 239, 231, 0.18);
+  pointer-events: none;
+}
+
+.rhythm-pad {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  cursor: ns-resize;
+  user-select: none;
+  touch-action: none;
+  outline: none;
+}
+
+.rhythm-pad--left {
+  background: var(--ink);
+  color: var(--acid);
+}
+
+.rhythm-pad--right {
+  background: var(--ink);
+  color: var(--orange);
+}
+
+.rhythm-pad:focus-visible,
+.tempo:focus-visible {
+  box-shadow: inset 0 0 0 4px var(--paper);
+}
+
+.flash {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--acid);
+  animation: flash 140ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  pointer-events: none;
+}
+
+.rhythm-pad--right .flash {
+  background: var(--orange);
+}
+
+.rhythm-pad .flash--sync {
+  background: var(--paper);
+}
+
+@keyframes flash {
+  0% { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+
+.rhythm-number {
+  position: relative;
+  z-index: 1;
+  font-family: "Syne", sans-serif;
+  font-size: clamp(8rem, 28vw, 25rem);
+  font-weight: 700;
+  line-height: 0.72;
+  letter-spacing: -0.1em;
+  transform: translateX(-0.05em);
+  pointer-events: none;
+}
+
+.pad-label,
+.drag-hint {
+  position: absolute;
+  z-index: 2;
+  left: clamp(1rem, 2.5vw, 2.5rem);
+  font-size: clamp(0.62rem, 0.8vw, 0.78rem);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  pointer-events: none;
+}
+
+.pad-label {
+  top: clamp(1rem, 2.5vw, 2.5rem);
+}
+
+.drag-hint {
+  bottom: clamp(1rem, 2.5vw, 2.5rem);
+  opacity: 0.55;
+}
+
+.is-dragging .rhythm-number,
+.is-dragging .tempo-readout {
+  transform: scale(0.96);
+}
+
+.tempo {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0 clamp(1rem, 3vw, 3rem) 6px;
+  overflow: hidden;
+  background: var(--ink);
+  color: var(--paper);
+  cursor: ew-resize;
+  user-select: none;
+  touch-action: none;
+  outline: none;
+}
+
+.tempo-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  transition: transform 120ms ease;
+  pointer-events: none;
+}
+
+.tempo-readout strong {
+  font-family: "Syne", sans-serif;
+  font-size: clamp(2.4rem, 6vh, 4.5rem);
+  line-height: 1;
+  letter-spacing: -0.06em;
+}
+
+.tempo-readout span,
+.tempo-direction {
+  font-size: clamp(0.6rem, 0.75vw, 0.75rem);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  opacity: 0.65;
+}
+
+.tempo-direction:last-of-type {
+  justify-self: end;
+}
+
+.tempo-track {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 6px;
+  background: #292925;
+}
+
+.tempo-fill {
+  height: 100%;
+  background: var(--paper);
+}
+
+@media (max-width: 600px) {
+  .rhythm-number {
+    font-size: clamp(7rem, 39vw, 13rem);
+  }
+
+  .drag-hint {
+    writing-mode: vertical-rl;
+  }
+
+  .tempo {
+    gap: 0.6rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flash {
+    animation-duration: 250ms;
+    animation-timing-function: linear;
+  }
+}
