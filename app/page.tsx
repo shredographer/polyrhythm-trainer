@@ -11,6 +11,7 @@ const SETTINGS_KEY = "polyrhythm-trainer-settings";
 type RhythmSide = "left" | "right";
 type Screen = "live" | "pattern";
 type PatternStep = { id: string; left: number; right: number; measures: number };
+type PatternPreset = { name: string; steps: Omit<PatternStep, "id">[] };
 type VisualMode =
   | "flash"
   | "highway"
@@ -40,8 +41,55 @@ const VISUAL_MODES: { id: VisualMode; label: string; group: "Learn" | "Follow" |
   { id: "metaballs", label: "Metaballs", group: "Feel" },
 ];
 
+const PATTERN_PRESETS: PatternPreset[] = [
+  {
+    name: "Foundations",
+    steps: [
+      { left: 2, right: 3, measures: 2 },
+      { left: 3, right: 4, measures: 2 },
+      { left: 4, right: 5, measures: 2 },
+    ],
+  },
+  {
+    name: "Odd ladder",
+    steps: [
+      { left: 3, right: 2, measures: 1 },
+      { left: 5, right: 4, measures: 1 },
+      { left: 7, right: 4, measures: 1 },
+      { left: 9, right: 8, measures: 1 },
+    ],
+  },
+  {
+    name: "Mirror",
+    steps: [
+      { left: 3, right: 4, measures: 2 },
+      { left: 4, right: 3, measures: 2 },
+      { left: 5, right: 6, measures: 2 },
+      { left: 6, right: 5, measures: 2 },
+    ],
+  },
+];
+
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function createStepId() {
+  return crypto.randomUUID();
+}
+
+function randomInteger(minimum: number, maximum: number) {
+  const value = crypto.getRandomValues(new Uint32Array(1))[0] / 4_294_967_296;
+  return minimum + Math.floor(value * (maximum - minimum + 1));
+}
+
+function createRandomPattern(): PatternStep[] {
+  return Array.from({ length: randomInteger(3, 6) }, () => {
+    const left = randomInteger(2, 9);
+    let right = randomInteger(2, 9);
+    if (right === left) right = right === 9 ? 2 : right + 1;
+    return { id: createStepId(), left, right, measures: randomInteger(1, 2) };
+  });
 }
 
 function playTone(context: AudioContext, frequency: number, volume = 0.22) {
@@ -77,16 +125,20 @@ export default function Trainer() {
   ]);
   const [patternPlaying, setPatternPlaying] = useState(false);
   const [loopPattern, setLoopPattern] = useState(true);
+  const [haptics, setHaptics] = useState(false);
+  const [beatReference, setBeatReference] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
   const [activeMeasure, setActiveMeasure] = useState(0);
   const [playhead, setPlayhead] = useState(0);
   const [pulses, setPulses] = useState({ left: 0, right: 0, leftSync: true, rightSync: true });
-  const timing = useRef({ origin: 0, leftStep: -1, rightStep: -1, measureIndex: -1 });
+  const timing = useRef({ origin: 0, leftStep: -1, rightStep: -1, referenceStep: -1, measureIndex: -1 });
   const values = useRef({ bpm, left, right });
   const patternRef = useRef(pattern);
   const patternPlayingRef = useRef(false);
   const loopPatternRef = useRef(loopPattern);
   const screenRef = useRef<Screen>(screen);
+  const hapticsRef = useRef(haptics);
+  const beatReferenceRef = useRef(beatReference);
   const audio = useRef<AudioContext | null>(null);
   const soundEnabled = useRef(false);
 
@@ -102,6 +154,8 @@ export default function Trainer() {
             visualMode: VisualMode;
             pattern: PatternStep[];
             loopPattern: boolean;
+            haptics: boolean;
+            beatReference: boolean;
           }>;
           if (typeof settings.bpm === "number") setBpm(clamp(Math.round(settings.bpm), MIN_BPM, MAX_BPM));
           if (typeof settings.left === "number") {
@@ -125,6 +179,8 @@ export default function Trainer() {
             if (validPattern.length) setPattern(validPattern);
           }
           if (typeof settings.loopPattern === "boolean") setLoopPattern(settings.loopPattern);
+          if (typeof settings.haptics === "boolean") setHaptics(settings.haptics);
+          if (typeof settings.beatReference === "boolean") setBeatReference(settings.beatReference);
         }
       } catch {
         localStorage.removeItem(SETTINGS_KEY);
@@ -137,8 +193,11 @@ export default function Trainer() {
 
   useEffect(() => {
     if (!settingsLoaded) return;
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ bpm, left, right, visualMode, pattern, loopPattern }));
-  }, [bpm, left, right, visualMode, pattern, loopPattern, settingsLoaded]);
+    localStorage.setItem(
+      SETTINGS_KEY,
+      JSON.stringify({ bpm, left, right, visualMode, pattern, loopPattern, haptics, beatReference }),
+    );
+  }, [bpm, left, right, visualMode, pattern, loopPattern, haptics, beatReference, settingsLoaded]);
 
   useEffect(() => {
     const step = pattern[activeStep];
@@ -151,7 +210,9 @@ export default function Trainer() {
     patternPlayingRef.current = patternPlaying;
     loopPatternRef.current = loopPattern;
     screenRef.current = screen;
-  }, [bpm, left, right, pattern, patternPlaying, loopPattern, screen, activeStep]);
+    hapticsRef.current = haptics;
+    beatReferenceRef.current = beatReference;
+  }, [bpm, left, right, pattern, patternPlaying, loopPattern, screen, activeStep, haptics, beatReference]);
 
   useEffect(() => {
     const enableSound = () => {
@@ -215,7 +276,14 @@ export default function Trainer() {
       }
       const leftStep = Math.floor(elapsed / (measureLength / current.left));
       const rightStep = Math.floor(elapsed / (measureLength / current.right));
+      const referenceStep = Math.floor(elapsed / beatLength);
       const rhythmActive = screenRef.current === "live" || patternPlayingRef.current;
+
+      if (rhythmActive && beatReferenceRef.current && referenceStep !== timing.current.referenceStep) {
+        timing.current.referenceStep = referenceStep;
+        const context = audio.current;
+        if (context) playTone(context, 196, 0.07);
+      }
 
       if (rhythmActive && (leftStep !== timing.current.leftStep || rightStep !== timing.current.rightStep)) {
         const leftChanged = leftStep !== timing.current.leftStep;
@@ -225,6 +293,9 @@ export default function Trainer() {
           if (leftChanged && rightChanged) playTone(context, 261.63);
           else if (leftChanged) playTone(context, 329.63);
           else playTone(context, 392);
+        }
+        if (hapticsRef.current && "vibrate" in navigator) {
+          navigator.vibrate(leftChanged && rightChanged ? 22 : 12);
         }
         timing.current.leftStep = leftStep;
         timing.current.rightStep = rightStep;
@@ -254,7 +325,13 @@ export default function Trainer() {
     const first = pattern[0];
     patternPlayingRef.current = true;
     values.current = { bpm, left: first.left, right: first.right };
-    timing.current = { origin: performance.now(), leftStep: -1, rightStep: -1, measureIndex: -1 };
+    timing.current = {
+      origin: performance.now(),
+      leftStep: -1,
+      rightStep: -1,
+      referenceStep: -1,
+      measureIndex: -1,
+    };
     setPlayhead(0);
     setActiveStep(0);
     setActiveMeasure(0);
@@ -337,11 +414,15 @@ export default function Trainer() {
       <Options
         open={optionsOpen}
         visualMode={visualMode}
+        haptics={haptics}
+        beatReference={beatReference}
         onToggle={() => setOptionsOpen((open) => !open)}
         onModeChange={(mode) => {
           setVisualMode(mode);
           setOptionsOpen(false);
         }}
+        onHapticsChange={setHaptics}
+        onBeatReferenceChange={setBeatReference}
       />
 
       <TempoControl bpm={bpm} soundReady={soundReady} onChange={setBpm} />
@@ -367,10 +448,13 @@ function PatternBuilder({
 }: {
   pattern: PatternStep[];
   loop: boolean;
-  onPatternChange: (pattern: PatternStep[]) => void;
+  onPatternChange: React.Dispatch<React.SetStateAction<PatternStep[]>>;
   onLoopChange: (loop: boolean) => void;
   onPlay: () => void;
 }) {
+  const draggedStep = useRef<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+
   const updateStep = (index: number, field: "left" | "right" | "measures", amount: number) => {
     onPatternChange(pattern.map((step, stepIndex) => {
       if (stepIndex !== index) return step;
@@ -379,12 +463,40 @@ function PatternBuilder({
     }));
   };
 
-  const moveStep = (index: number, direction: -1 | 1) => {
-    const destination = index + direction;
-    if (destination < 0 || destination >= pattern.length) return;
-    const next = [...pattern];
-    [next[index], next[destination]] = [next[destination], next[index]];
-    onPatternChange(next);
+  const startReorder = (event: PointerEvent<HTMLButtonElement>, id: string) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    draggedStep.current = id;
+    setDraggingId(id);
+  };
+
+  const reorderAtPointer = (event: PointerEvent<HTMLButtonElement>) => {
+    const sourceId = draggedStep.current;
+    if (!sourceId) return;
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-step-id]");
+    const targetId = target?.dataset.stepId;
+    if (!targetId || targetId === sourceId) return;
+    onPatternChange((current) => {
+      const sourceIndex = current.findIndex((step) => step.id === sourceId);
+      const targetIndex = current.findIndex((step) => step.id === targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return current;
+      const next = [...current];
+      const [moved] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+  };
+
+  const endReorder = () => {
+    draggedStep.current = null;
+    setDraggingId(null);
+  };
+
+  const applyPreset = (preset: PatternPreset) => {
+    onPatternChange(preset.steps.map((step) => ({ ...step, id: createStepId() })));
+  };
+
+  const randomize = () => {
+    onPatternChange(createRandomPattern());
   };
 
   return (
@@ -399,9 +511,23 @@ function PatternBuilder({
         </button>
       </header>
 
+      <div className="pattern-tools">
+        <span>Presets</span>
+        <div>
+          {PATTERN_PRESETS.map((preset) => (
+            <button type="button" key={preset.name} onClick={() => applyPreset(preset)}>{preset.name}</button>
+          ))}
+          <button className="random-pattern" type="button" onClick={randomize}>↝ Random</button>
+        </div>
+      </div>
+
       <div className="pattern-list">
         {pattern.map((step, index) => (
-          <article className="pattern-card" key={step.id}>
+          <article
+            className={`pattern-card${draggingId === step.id ? " is-reordering" : ""}`}
+            data-step-id={step.id}
+            key={step.id}
+          >
             <span className="step-index">{String(index + 1).padStart(2, "0")}</span>
             <RatioEditor label="Left" value={step.left} onChange={(amount) => updateStep(index, "left", amount)} />
             <span className="ratio-colon">:</span>
@@ -415,8 +541,24 @@ function PatternBuilder({
               </div>
             </div>
             <div className="step-actions">
-              <button type="button" aria-label="Move step up" disabled={index === 0} onClick={() => moveStep(index, -1)}>↑</button>
-              <button type="button" aria-label="Move step down" disabled={index === pattern.length - 1} onClick={() => moveStep(index, 1)}>↓</button>
+              <button
+                className="drag-handle"
+                type="button"
+                aria-label="Drag to reorder step"
+                onPointerDown={(event) => startReorder(event, step.id)}
+                onPointerMove={reorderAtPointer}
+                onPointerUp={endReorder}
+                onPointerCancel={endReorder}
+              >⠿</button>
+              <button
+                type="button"
+                aria-label="Duplicate step"
+                onClick={() => onPatternChange([
+                  ...pattern.slice(0, index + 1),
+                  { ...step, id: createStepId() },
+                  ...pattern.slice(index + 1),
+                ])}
+              >⧉</button>
               <button type="button" aria-label="Delete step" disabled={pattern.length === 1} onClick={() => onPatternChange(pattern.filter((_, item) => item !== index))}>×</button>
             </div>
           </article>
@@ -427,7 +569,7 @@ function PatternBuilder({
         <button
           className="add-step"
           type="button"
-          onClick={() => onPatternChange([...pattern, { id: `step-${Date.now()}`, left: 3, right: 4, measures: 1 }])}
+          onClick={() => onPatternChange([...pattern, { id: createStepId(), left: 3, right: 4, measures: 1 }])}
         >
           + Add rhythm
         </button>
@@ -779,13 +921,21 @@ function Highway({
 function Options({
   open,
   visualMode,
+  haptics,
+  beatReference,
   onToggle,
   onModeChange,
+  onHapticsChange,
+  onBeatReferenceChange,
 }: {
   open: boolean;
   visualMode: VisualMode;
+  haptics: boolean;
+  beatReference: boolean;
   onToggle: () => void;
   onModeChange: (mode: VisualMode) => void;
+  onHapticsChange: (enabled: boolean) => void;
+  onBeatReferenceChange: (enabled: boolean) => void;
 }) {
   return (
     <div className="options">
@@ -820,6 +970,17 @@ function Options({
               </div>
             </div>
           ))}
+          <div className="practice-options">
+            <span>Practice</span>
+            <label>
+              <span>Beat reference</span>
+              <input type="checkbox" checked={beatReference} onChange={(event) => onBeatReferenceChange(event.target.checked)} />
+            </label>
+            <label>
+              <span>Haptics</span>
+              <input type="checkbox" checked={haptics} onChange={(event) => onHapticsChange(event.target.checked)} />
+            </label>
+          </div>
         </div>
       )}
     </div>

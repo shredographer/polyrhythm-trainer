@@ -169,6 +169,37 @@ input {
   opacity: 0.38;
 }
 
+.practice-options {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid rgba(242,239,231,0.12);
+}
+
+.practice-options > span {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  opacity: 0.38;
+}
+
+.practice-options label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0.15rem;
+  color: var(--paper);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.practice-options input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--acid);
+}
+
 .mode-picker button {
   padding: 0.7rem;
   border: 0;
@@ -682,6 +713,43 @@ input {
   gap: 0.55rem;
 }
 
+.pattern-tools {
+  width: min(68rem, 100%);
+  margin: 0 auto 1rem;
+}
+
+.pattern-tools > span {
+  display: block;
+  margin-bottom: 0.45rem;
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  opacity: 0.4;
+}
+
+.pattern-tools > div {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pattern-tools button {
+  padding: 0.6rem 0.8rem;
+  flex: 0 0 auto;
+  border: 1px solid rgba(242,239,231,0.16);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--paper);
+  font-size: 0.67rem;
+  cursor: pointer;
+}
+
+.pattern-tools button.random-pattern {
+  border-color: rgba(216,255,67,0.45);
+  color: var(--acid);
+}
+
 .pattern-card {
   display: grid;
   grid-template-columns: auto minmax(6rem, 1fr) auto minmax(6rem, 1fr) minmax(8rem, 0.8fr) auto;
@@ -691,6 +759,12 @@ input {
   border: 1px solid rgba(242, 239, 231, 0.14);
   border-radius: 0.8rem;
   background: #1c1c18;
+}
+
+.pattern-card.is-reordering {
+  border-color: var(--acid);
+  opacity: 0.72;
+  transform: scale(0.985);
 }
 
 .step-index {
@@ -755,6 +829,13 @@ input {
   cursor: default;
   opacity: 0.18;
 }
+
+.step-actions .drag-handle {
+  touch-action: none;
+  cursor: grab;
+}
+
+.step-actions .drag-handle:active { cursor: grabbing; }
 
 .builder-footer {
   display: flex;
@@ -983,7 +1064,7 @@ input {
   }
 
   .step-actions {
-    grid-column: 4 / 6;
+    grid-column: 3 / 6;
     grid-row: 2;
     justify-self: end;
     z-index: 1;
