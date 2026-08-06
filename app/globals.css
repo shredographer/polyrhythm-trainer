@@ -907,6 +907,19 @@ input {
   pointer-events: none;
 }
 
+.tap-hint {
+  position: absolute;
+  bottom: 1rem;
+  left: 50%;
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.3;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .tempo-track {
   position: absolute;
   right: 0;

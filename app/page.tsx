@@ -835,21 +835,37 @@ function TempoControl({
   soundReady: boolean;
   onChange: (bpm: number) => void;
 }) {
-  const drag = useRef({ x: 0, bpm: 0 });
+  const drag = useRef({ x: 0, bpm: 0, moved: false });
+  const taps = useRef<number[]>([]);
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = { x: event.clientX, bpm };
+    drag.current = { x: event.clientX, bpm, moved: false };
     event.currentTarget.classList.add("is-dragging");
   };
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    if (Math.abs(event.clientX - drag.current.x) > 6) drag.current.moved = true;
+    if (!drag.current.moved) return;
     onChange(clamp(Math.round(drag.current.bpm + (event.clientX - drag.current.x) / 3), MIN_BPM, MAX_BPM));
   };
 
-  const endDrag = (event: PointerEvent<HTMLDivElement>) => {
+  const tapTempo = () => {
+    const now = performance.now();
+    const previousTap = taps.current.at(-1);
+    if (!previousTap || now - previousTap > 2_000) taps.current = [now];
+    else taps.current = [...taps.current.slice(-5), now];
+    if (taps.current.length < 2) return;
+
+    const intervals = taps.current.slice(1).map((tap, index) => tap - taps.current[index]);
+    const averageInterval = intervals.reduce((total, interval) => total + interval, 0) / intervals.length;
+    onChange(clamp(Math.round(60_000 / averageInterval), MIN_BPM, MAX_BPM));
+  };
+
+  const endDrag = (event: PointerEvent<HTMLDivElement>, shouldTap = true) => {
     event.currentTarget.classList.remove("is-dragging");
+    if (shouldTap && !drag.current.moved) tapTempo();
   };
 
   return (
@@ -863,8 +879,8 @@ function TempoControl({
       aria-valuenow={bpm}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerUp={endDrag}
-      onPointerCancel={endDrag}
+      onPointerUp={(event) => endDrag(event)}
+      onPointerCancel={(event) => endDrag(event, false)}
       onKeyDown={(event) => {
         if (event.key === "ArrowRight" || event.key === "ArrowUp") onChange(clamp(bpm + 1, MIN_BPM, MAX_BPM));
         if (event.key === "ArrowLeft" || event.key === "ArrowDown") onChange(clamp(bpm - 1, MIN_BPM, MAX_BPM));
@@ -877,6 +893,7 @@ function TempoControl({
       </div>
       <span className="tempo-direction">faster</span>
       <span className="sound-status">{soundReady ? "sound on" : "tap to enable sound"}</span>
+      <span className="tap-hint">tap tempo · drag to adjust</span>
       <div className="tempo-track" aria-hidden="true">
         <div className="tempo-fill" style={{ width: `${((bpm - MIN_BPM) / (MAX_BPM - MIN_BPM)) * 100}%` }} />
       </div>
