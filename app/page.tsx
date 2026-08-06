@@ -9,6 +9,8 @@ const MAX_BPM = 240;
 const SETTINGS_KEY = "polyrhythm-trainer-settings";
 
 type RhythmSide = "left" | "right";
+type Screen = "live" | "pattern";
+type PatternStep = { id: string; left: number; right: number; measures: number };
 type VisualMode =
   | "flash"
   | "highway"
@@ -67,10 +69,24 @@ export default function Trainer() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [visualMode, setVisualMode] = useState<VisualMode>("flash");
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [screen, setScreen] = useState<Screen>("live");
+  const [pattern, setPattern] = useState<PatternStep[]>([
+    { id: "step-1", left: 7, right: 4, measures: 1 },
+    { id: "step-2", left: 3, right: 2, measures: 2 },
+    { id: "step-3", left: 6, right: 8, measures: 1 },
+  ]);
+  const [patternPlaying, setPatternPlaying] = useState(false);
+  const [loopPattern, setLoopPattern] = useState(true);
+  const [activeStep, setActiveStep] = useState(0);
+  const [activeMeasure, setActiveMeasure] = useState(0);
   const [playhead, setPlayhead] = useState(0);
   const [pulses, setPulses] = useState({ left: 0, right: 0, leftSync: true, rightSync: true });
-  const timing = useRef({ origin: 0, leftStep: -1, rightStep: -1 });
+  const timing = useRef({ origin: 0, leftStep: -1, rightStep: -1, measureIndex: -1 });
   const values = useRef({ bpm, left, right });
+  const patternRef = useRef(pattern);
+  const patternPlayingRef = useRef(false);
+  const loopPatternRef = useRef(loopPattern);
+  const screenRef = useRef<Screen>(screen);
   const audio = useRef<AudioContext | null>(null);
   const soundEnabled = useRef(false);
 
@@ -84,6 +100,8 @@ export default function Trainer() {
             left: number;
             right: number;
             visualMode: VisualMode;
+            pattern: PatternStep[];
+            loopPattern: boolean;
           }>;
           if (typeof settings.bpm === "number") setBpm(clamp(Math.round(settings.bpm), MIN_BPM, MAX_BPM));
           if (typeof settings.left === "number") {
@@ -95,6 +113,18 @@ export default function Trainer() {
           if (VISUAL_MODES.some((mode) => mode.id === settings.visualMode)) {
             setVisualMode(settings.visualMode as VisualMode);
           }
+          if (Array.isArray(settings.pattern)) {
+            const validPattern = settings.pattern
+              .filter((step) => step && typeof step === "object")
+              .map((step, index) => ({
+                id: typeof step.id === "string" ? step.id : `step-${index + 1}`,
+                left: clamp(Math.round(Number(step.left) || 1), MIN_SUBDIVISION, MAX_SUBDIVISION),
+                right: clamp(Math.round(Number(step.right) || 1), MIN_SUBDIVISION, MAX_SUBDIVISION),
+                measures: clamp(Math.round(Number(step.measures) || 1), 1, 16),
+              }));
+            if (validPattern.length) setPattern(validPattern);
+          }
+          if (typeof settings.loopPattern === "boolean") setLoopPattern(settings.loopPattern);
         }
       } catch {
         localStorage.removeItem(SETTINGS_KEY);
@@ -107,12 +137,21 @@ export default function Trainer() {
 
   useEffect(() => {
     if (!settingsLoaded) return;
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ bpm, left, right, visualMode }));
-  }, [bpm, left, right, visualMode, settingsLoaded]);
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ bpm, left, right, visualMode, pattern, loopPattern }));
+  }, [bpm, left, right, visualMode, pattern, loopPattern, settingsLoaded]);
 
   useEffect(() => {
-    values.current = { bpm, left, right };
-  }, [bpm, left, right]);
+    const step = pattern[activeStep];
+    values.current = {
+      bpm,
+      left: patternPlaying && step ? step.left : left,
+      right: patternPlaying && step ? step.right : right,
+    };
+    patternRef.current = pattern;
+    patternPlayingRef.current = patternPlaying;
+    loopPatternRef.current = loopPattern;
+    screenRef.current = screen;
+  }, [bpm, left, right, pattern, patternPlaying, loopPattern, screen, activeStep]);
 
   useEffect(() => {
     const enableSound = () => {
@@ -141,18 +180,44 @@ export default function Trainer() {
     let lastVisualUpdate = 0;
 
     const tick = (now: number) => {
-      const current = values.current;
+      let current = values.current;
       const beatLength = 60_000 / current.bpm;
       const measureLength = beatLength * 4;
       const elapsed = now - timing.current.origin;
+      const measureIndex = Math.floor(elapsed / measureLength);
+
+      if (patternPlayingRef.current && measureIndex !== timing.current.measureIndex) {
+        timing.current.measureIndex = measureIndex;
+        const sequence = patternRef.current;
+        const totalMeasures = sequence.reduce((total, step) => total + step.measures, 0);
+        if (!loopPatternRef.current && measureIndex >= totalMeasures) {
+          patternPlayingRef.current = false;
+          setPatternPlaying(false);
+        } else {
+          let remaining = totalMeasures ? measureIndex % totalMeasures : 0;
+          let nextStep = 0;
+          while (nextStep < sequence.length - 1 && remaining >= sequence[nextStep].measures) {
+            remaining -= sequence[nextStep].measures;
+            nextStep += 1;
+          }
+          const step = sequence[nextStep];
+          if (step) {
+            setActiveStep(nextStep);
+            setActiveMeasure(remaining);
+            current = { bpm: current.bpm, left: step.left, right: step.right };
+            values.current = current;
+          }
+        }
+      }
       if (now - lastVisualUpdate > 32) {
         lastVisualUpdate = now;
         setPlayhead(elapsed);
       }
       const leftStep = Math.floor(elapsed / (measureLength / current.left));
       const rightStep = Math.floor(elapsed / (measureLength / current.right));
+      const rhythmActive = screenRef.current === "live" || patternPlayingRef.current;
 
-      if (leftStep !== timing.current.leftStep || rightStep !== timing.current.rightStep) {
+      if (rhythmActive && (leftStep !== timing.current.leftStep || rightStep !== timing.current.rightStep)) {
         const leftChanged = leftStep !== timing.current.leftStep;
         const rightChanged = rightStep !== timing.current.rightStep;
         const context = audio.current;
@@ -184,44 +249,90 @@ export default function Trainer() {
     else setRight(update);
   };
 
+  const startPattern = () => {
+    if (!pattern.length) return;
+    const first = pattern[0];
+    patternPlayingRef.current = true;
+    values.current = { bpm, left: first.left, right: first.right };
+    timing.current = { origin: performance.now(), leftStep: -1, rightStep: -1, measureIndex: -1 };
+    setPlayhead(0);
+    setActiveStep(0);
+    setActiveMeasure(0);
+    setPatternPlaying(true);
+  };
+
+  const stopPattern = () => {
+    patternPlayingRef.current = false;
+    setPatternPlaying(false);
+  };
+
+  const displayStep = pattern[activeStep];
+  const displayLeft = patternPlaying && displayStep ? displayStep.left : left;
+  const displayRight = patternPlaying && displayStep ? displayStep.right : right;
+
   return (
     <main className={`trainer trainer--${visualMode}`}>
+      <ScreenSwitch
+        screen={screen}
+        onChange={(next) => {
+          if (next === "live") stopPattern();
+          setScreen(next);
+        }}
+      />
+      {screen === "pattern" && !patternPlaying ? (
+        <PatternBuilder
+          pattern={pattern}
+          loop={loopPattern}
+          onPatternChange={setPattern}
+          onLoopChange={setLoopPattern}
+          onPlay={startPattern}
+        />
+      ) : (
       <section className="rhythms" aria-label="Rhythm subdivisions">
         <RhythmPad
           side="left"
-          value={left}
+          value={displayLeft}
           pulse={pulses.left}
           synchronized={pulses.leftSync}
           visualMode={visualMode}
           playhead={playhead}
           bpm={bpm}
-          otherValue={right}
-          onChange={(amount) => changeSubdivision("left", amount)}
+          otherValue={displayRight}
+          onChange={(amount) => !patternPlaying && changeSubdivision("left", amount)}
         />
         <RhythmPad
           side="right"
-          value={right}
+          value={displayRight}
           pulse={pulses.right}
           synchronized={pulses.rightSync}
           visualMode={visualMode}
           playhead={playhead}
           bpm={bpm}
-          otherValue={left}
-          onChange={(amount) => changeSubdivision("right", amount)}
+          otherValue={displayLeft}
+          onChange={(amount) => !patternPlaying && changeSubdivision("right", amount)}
         />
         <div className="center-line" aria-hidden="true" />
         {visualMode === "highway" && <div className="shared-hit-line" aria-hidden="true" />}
         {!(["flash", "highway"] as VisualMode[]).includes(visualMode) && (
           <VisualStage
             mode={visualMode}
-            left={left}
-            right={right}
+            left={displayLeft}
+            right={displayRight}
             bpm={bpm}
             playhead={playhead}
             pulses={pulses}
           />
         )}
+        {patternPlaying && displayStep && (
+          <PatternNowPlaying
+            pattern={pattern}
+            activeStep={activeStep}
+            activeMeasure={activeMeasure}
+            onStop={stopPattern}
+          />
+        )}
       </section>
+      )}
 
       <Options
         open={optionsOpen}
@@ -235,6 +346,136 @@ export default function Trainer() {
 
       <TempoControl bpm={bpm} soundReady={soundReady} onChange={setBpm} />
     </main>
+  );
+}
+
+function ScreenSwitch({ screen, onChange }: { screen: Screen; onChange: (screen: Screen) => void }) {
+  return (
+    <nav className="screen-switch" aria-label="Trainer screen">
+      <button type="button" className={screen === "live" ? "is-active" : ""} onClick={() => onChange("live")}>Live</button>
+      <button type="button" className={screen === "pattern" ? "is-active" : ""} onClick={() => onChange("pattern")}>Pattern</button>
+    </nav>
+  );
+}
+
+function PatternBuilder({
+  pattern,
+  loop,
+  onPatternChange,
+  onLoopChange,
+  onPlay,
+}: {
+  pattern: PatternStep[];
+  loop: boolean;
+  onPatternChange: (pattern: PatternStep[]) => void;
+  onLoopChange: (loop: boolean) => void;
+  onPlay: () => void;
+}) {
+  const updateStep = (index: number, field: "left" | "right" | "measures", amount: number) => {
+    onPatternChange(pattern.map((step, stepIndex) => {
+      if (stepIndex !== index) return step;
+      const maximum = field === "measures" ? 16 : MAX_SUBDIVISION;
+      return { ...step, [field]: clamp(step[field] + amount, 1, maximum) };
+    }));
+  };
+
+  const moveStep = (index: number, direction: -1 | 1) => {
+    const destination = index + direction;
+    if (destination < 0 || destination >= pattern.length) return;
+    const next = [...pattern];
+    [next[index], next[destination]] = [next[destination], next[index]];
+    onPatternChange(next);
+  };
+
+  return (
+    <section className="pattern-builder" aria-label="Pattern builder">
+      <header className="builder-header">
+        <div>
+          <span>Sequence</span>
+          <h1>Build a pattern</h1>
+        </div>
+        <button className="play-pattern" type="button" onClick={onPlay} disabled={!pattern.length}>
+          <span>▶</span> Play
+        </button>
+      </header>
+
+      <div className="pattern-list">
+        {pattern.map((step, index) => (
+          <article className="pattern-card" key={step.id}>
+            <span className="step-index">{String(index + 1).padStart(2, "0")}</span>
+            <RatioEditor label="Left" value={step.left} onChange={(amount) => updateStep(index, "left", amount)} />
+            <span className="ratio-colon">:</span>
+            <RatioEditor label="Right" value={step.right} onChange={(amount) => updateStep(index, "right", amount)} />
+            <div className="measure-editor">
+              <span>{step.measures === 1 ? "measure" : "measures"}</span>
+              <div>
+                <button type="button" aria-label="Remove a measure" onClick={() => updateStep(index, "measures", -1)}>−</button>
+                <strong>{step.measures}</strong>
+                <button type="button" aria-label="Add a measure" onClick={() => updateStep(index, "measures", 1)}>+</button>
+              </div>
+            </div>
+            <div className="step-actions">
+              <button type="button" aria-label="Move step up" disabled={index === 0} onClick={() => moveStep(index, -1)}>↑</button>
+              <button type="button" aria-label="Move step down" disabled={index === pattern.length - 1} onClick={() => moveStep(index, 1)}>↓</button>
+              <button type="button" aria-label="Delete step" disabled={pattern.length === 1} onClick={() => onPatternChange(pattern.filter((_, item) => item !== index))}>×</button>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <footer className="builder-footer">
+        <button
+          className="add-step"
+          type="button"
+          onClick={() => onPatternChange([...pattern, { id: `step-${Date.now()}`, left: 3, right: 4, measures: 1 }])}
+        >
+          + Add rhythm
+        </button>
+        <label className="loop-control">
+          <input type="checkbox" checked={loop} onChange={(event) => onLoopChange(event.target.checked)} />
+          <span>Loop pattern</span>
+        </label>
+      </footer>
+    </section>
+  );
+}
+
+function RatioEditor({ label, value, onChange }: { label: string; value: number; onChange: (amount: number) => void }) {
+  return (
+    <div className="ratio-editor">
+      <span>{label}</span>
+      <div>
+        <button type="button" aria-label={`Decrease ${label}`} onClick={() => onChange(-1)}>−</button>
+        <strong>{value}</strong>
+        <button type="button" aria-label={`Increase ${label}`} onClick={() => onChange(1)}>+</button>
+      </div>
+    </div>
+  );
+}
+
+function PatternNowPlaying({
+  pattern,
+  activeStep,
+  activeMeasure,
+  onStop,
+}: {
+  pattern: PatternStep[];
+  activeStep: number;
+  activeMeasure: number;
+  onStop: () => void;
+}) {
+  return (
+    <div className="pattern-now-playing">
+      <button type="button" onClick={onStop} aria-label="Stop pattern">■</button>
+      <div className="sequence-strip">
+        {pattern.map((step, index) => (
+          <span className={index === activeStep ? "is-active" : index < activeStep ? "is-complete" : ""} key={step.id}>
+            {step.left}:{step.right}
+            {index === activeStep && <small>{activeMeasure + 1}/{step.measures}</small>}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
