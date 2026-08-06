@@ -6,6 +6,7 @@ const MIN_SUBDIVISION = 1;
 const MAX_SUBDIVISION = 16;
 const MIN_BPM = 30;
 const MAX_BPM = 240;
+const SETTINGS_KEY = "polyrhythm-trainer-settings";
 
 type RhythmSide = "left" | "right";
 type VisualMode =
@@ -63,6 +64,7 @@ export default function Trainer() {
   const [left, setLeft] = useState(1);
   const [right, setRight] = useState(1);
   const [soundReady, setSoundReady] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [visualMode, setVisualMode] = useState<VisualMode>("flash");
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [playhead, setPlayhead] = useState(0);
@@ -71,6 +73,42 @@ export default function Trainer() {
   const values = useRef({ bpm, left, right });
   const audio = useRef<AudioContext | null>(null);
   const soundEnabled = useRef(false);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      try {
+        const saved = localStorage.getItem(SETTINGS_KEY);
+        if (saved) {
+          const settings = JSON.parse(saved) as Partial<{
+            bpm: number;
+            left: number;
+            right: number;
+            visualMode: VisualMode;
+          }>;
+          if (typeof settings.bpm === "number") setBpm(clamp(Math.round(settings.bpm), MIN_BPM, MAX_BPM));
+          if (typeof settings.left === "number") {
+            setLeft(clamp(Math.round(settings.left), MIN_SUBDIVISION, MAX_SUBDIVISION));
+          }
+          if (typeof settings.right === "number") {
+            setRight(clamp(Math.round(settings.right), MIN_SUBDIVISION, MAX_SUBDIVISION));
+          }
+          if (VISUAL_MODES.some((mode) => mode.id === settings.visualMode)) {
+            setVisualMode(settings.visualMode as VisualMode);
+          }
+        }
+      } catch {
+        localStorage.removeItem(SETTINGS_KEY);
+      } finally {
+        setSettingsLoaded(true);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ bpm, left, right, visualMode }));
+  }, [bpm, left, right, visualMode, settingsLoaded]);
 
   useEffect(() => {
     values.current = { bpm, left, right };
