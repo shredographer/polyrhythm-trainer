@@ -93,6 +93,7 @@ input {
 
 .options-panel {
   width: min(18rem, calc(100vw - 1.5rem));
+  max-height: min(42rem, calc(80dvh - 4rem));
   margin-top: 0.65rem;
   padding: 1.1rem;
   border: 1px solid rgba(242, 239, 231, 0.22);
@@ -101,6 +102,7 @@ input {
   color: var(--paper);
   box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.38);
   backdrop-filter: blur(18px);
+  overflow-y: auto;
 }
 
 .options-title {
@@ -114,11 +116,24 @@ input {
 
 .mode-picker {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.35rem;
   padding: 0.3rem;
   border-radius: 0.65rem;
   background: #0d0d0b;
+}
+
+.mode-group + .mode-group {
+  margin-top: 0.9rem;
+}
+
+.mode-group > span {
+  display: block;
+  margin: 0 0 0.38rem 0.3rem;
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  opacity: 0.38;
 }
 
 .mode-picker button {
@@ -185,13 +200,283 @@ input {
   background: var(--paper);
 }
 
-.trainer--highway .rhythm-number {
+.trainer:not(.trainer--flash) .rhythm-number {
   z-index: 3;
   align-self: start;
   margin-top: clamp(4.2rem, 9vh, 6.5rem);
   font-size: clamp(3.8rem, 9vw, 8rem);
   opacity: 0.22;
 }
+
+.visual-stage {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  overflow: hidden;
+  color: var(--paper);
+  pointer-events: none;
+}
+
+.measure-progress {
+  position: absolute;
+  z-index: 10;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3px;
+  background: var(--paper);
+  opacity: 0.65;
+  transform-origin: left;
+}
+
+/* Orbit */
+.orbit-system,
+.radial-clock {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(56vh, 58vw);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+}
+
+.orbit {
+  position: absolute;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: 0.8;
+}
+
+.orbit--left { inset: 6%; color: var(--acid); }
+.orbit--right { inset: 20%; color: var(--orange); }
+
+.orbit > span {
+  position: absolute;
+  inset: 0;
+}
+
+.orbit i {
+  position: absolute;
+  top: -0.55rem;
+  left: 50%;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 1.4rem currentColor;
+  transform: translateX(-50%);
+}
+
+.orbit-marker {
+  position: absolute;
+  top: 4%;
+  left: 50%;
+  width: 2px;
+  height: 16%;
+  background: var(--paper);
+  transform: translateX(-50%);
+}
+
+/* Rings and ripples */
+.split-effect {
+  position: absolute;
+  inset: 0;
+}
+
+.pulse-ring,
+.ripple {
+  position: absolute;
+  top: 50%;
+  width: 8rem;
+  aspect-ratio: 1;
+  border: 0.35rem solid currentColor;
+  border-radius: 50%;
+}
+
+.pulse-ring--left,
+.ripple--left { left: 25%; color: var(--acid); }
+.pulse-ring--right,
+.ripple--right { left: 75%; color: var(--orange); }
+.pulse-ring.is-sync,
+.ripple.is-sync { color: var(--paper); }
+
+.pulse-ring {
+  animation: pulse-ring 700ms cubic-bezier(0.15, 0.65, 0.25, 1) both;
+}
+
+@keyframes pulse-ring {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(0.15); }
+  to { opacity: 0; transform: translate(-50%, -50%) scale(3.4); }
+}
+
+.ripple-field {
+  background: radial-gradient(circle at 50% 50%, rgba(242,239,231,0.04), transparent 55%);
+}
+
+.ripple {
+  width: 3rem;
+  border-width: 2px;
+  animation: ripple 1.25s ease-out both;
+}
+
+@keyframes ripple {
+  from { opacity: 0.9; transform: translate(-50%, -50%) scale(0.2); }
+  to { opacity: 0; transform: translate(-50%, -50%) scale(9); }
+}
+
+/* Step grid */
+.step-grid,
+.block-system {
+  position: absolute;
+  top: 50%;
+  right: 7%;
+  left: 7%;
+  display: grid;
+  gap: clamp(1.5rem, 7vh, 4rem);
+  transform: translateY(-50%);
+}
+
+.marker-row {
+  display: flex;
+  gap: clamp(0.22rem, 0.65vw, 0.7rem);
+}
+
+.marker-row span {
+  display: grid;
+  min-width: 0;
+  height: clamp(2.1rem, 6vh, 4rem);
+  flex: 1;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 0.3rem;
+  font-size: clamp(0.55rem, 1vw, 0.75rem);
+  opacity: 0.28;
+}
+
+.marker-row--left { color: var(--acid); }
+.marker-row--right { color: var(--orange); }
+.marker-row span.is-active { box-shadow: 0 0 1.4rem currentColor; opacity: 1; }
+.marker-row--left span.is-active { background: var(--acid); color: var(--ink); }
+.marker-row--right span.is-active { background: var(--orange); color: var(--ink); }
+
+.grid-playhead {
+  position: absolute;
+  top: -2rem;
+  bottom: -2rem;
+  width: 2px;
+  background: var(--paper);
+  box-shadow: 0 0 1rem var(--paper);
+}
+
+/* Pendulums */
+.pendulum-system {
+  position: absolute;
+  inset: 7% 10% 12%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.pendulum {
+  position: relative;
+  width: 2px;
+  height: min(48vh, 58%);
+  justify-self: center;
+  background: currentColor;
+  transform-origin: top;
+}
+
+.pendulum--left { color: var(--acid); }
+.pendulum--right { color: var(--orange); }
+.pendulum span { position: absolute; top: -0.4rem; left: 50%; width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--paper); transform: translateX(-50%); }
+.pendulum i { position: absolute; bottom: -1.5rem; left: 50%; width: 3rem; height: 3rem; border-radius: 50%; background: currentColor; box-shadow: 0 0 2rem currentColor; transform: translateX(-50%); animation: pendulum-hit 180ms steps(1,end) both; }
+@keyframes pendulum-hit { from { filter: brightness(2.5); } to { filter: brightness(1); } }
+
+/* Radial clock */
+.radial-clock {
+  width: min(50vh, 50vw);
+  border: 1px solid rgba(242,239,231,0.25);
+  border-radius: 50%;
+}
+
+.radial-mark {
+  position: absolute;
+  top: calc(50% - 0.35rem);
+  left: calc(50% - 0.35rem);
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+}
+.radial-mark--left { background: var(--acid); }
+.radial-mark--right { background: var(--orange); }
+.clock-hand { position: absolute; inset: 0; }
+.clock-hand::before { content: ""; position: absolute; top: 4%; left: calc(50% - 1px); width: 2px; height: 46%; background: var(--paper); box-shadow: 0 0 1rem var(--paper); }
+.radial-clock > b { position: absolute; top: 50%; left: 50%; width: 1rem; height: 1rem; border-radius: 50%; background: var(--paper); transform: translate(-50%, -50%); }
+
+/* Particles */
+.particles {
+  position: absolute;
+  top: 63%;
+  left: 25%;
+  color: var(--acid);
+}
+.particles--right { left: 75%; color: var(--orange); }
+.particles.is-sync { color: var(--paper); }
+.particles i {
+  --angle: calc(var(--particle) * 30deg);
+  position: absolute;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: currentColor;
+  animation: particle 650ms ease-out both;
+  transform: rotate(var(--angle)) translateX(0);
+}
+@keyframes particle {
+  from { opacity: 1; transform: rotate(var(--angle)) translateX(0) scale(1); }
+  to { opacity: 0; transform: rotate(var(--angle)) translateX(clamp(4rem, 10vw, 8rem)) scale(0.2); }
+}
+
+/* Blocks */
+.block-row {
+  display: flex;
+  height: clamp(3.5rem, 9vh, 6rem);
+  gap: 3px;
+}
+.block-row span { flex: 1; border: 1px solid currentColor; opacity: 0.22; }
+.block-row--left { color: var(--acid); }
+.block-row--right { color: var(--orange); }
+.block-row span.is-active { background: currentColor; opacity: 1; box-shadow: 0 0 1.5rem currentColor; }
+
+/* Lissajous */
+.lissajous {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(65vh, 70vw);
+  height: min(65vh, 70vw);
+  overflow: visible;
+  transform: translate(-50%, -50%);
+}
+.lissajous polyline { fill: none; stroke: url(#none); stroke: var(--paper); stroke-width: 0.35; opacity: 0.38; vector-effect: non-scaling-stroke; }
+.lissajous circle { fill: var(--acid); stroke: var(--orange); stroke-width: 1.2; filter: drop-shadow(0 0 4px var(--paper)); }
+
+/* Metaballs */
+.metaball-field {
+  position: absolute;
+  inset: -20%;
+  overflow: hidden;
+  background: #000;
+  filter: blur(22px) contrast(18);
+}
+.metaball {
+  position: absolute;
+  top: 42%;
+  width: clamp(10rem, 26vw, 24rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+}
+.metaball--left { left: 19%; background: var(--acid); }
+.metaball--right { right: 19%; background: var(--orange); }
 
 .highway {
   position: absolute;

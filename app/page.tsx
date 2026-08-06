@@ -8,7 +8,34 @@ const MIN_BPM = 30;
 const MAX_BPM = 240;
 
 type RhythmSide = "left" | "right";
-type VisualMode = "flash" | "highway";
+type VisualMode =
+  | "flash"
+  | "highway"
+  | "orbit"
+  | "rings"
+  | "grid"
+  | "pendulums"
+  | "ripples"
+  | "radial"
+  | "particles"
+  | "blocks"
+  | "lissajous"
+  | "metaballs";
+
+const VISUAL_MODES: { id: VisualMode; label: string; group: "Learn" | "Follow" | "Feel" }[] = [
+  { id: "grid", label: "Step grid", group: "Learn" },
+  { id: "blocks", label: "Blocks", group: "Learn" },
+  { id: "flash", label: "Flash", group: "Follow" },
+  { id: "highway", label: "Highway", group: "Follow" },
+  { id: "pendulums", label: "Pendulums", group: "Follow" },
+  { id: "orbit", label: "Orbit", group: "Feel" },
+  { id: "rings", label: "Pulse rings", group: "Feel" },
+  { id: "ripples", label: "Ripples", group: "Feel" },
+  { id: "radial", label: "Radial clock", group: "Feel" },
+  { id: "particles", label: "Particles", group: "Feel" },
+  { id: "lissajous", label: "Lissajous", group: "Feel" },
+  { id: "metaballs", label: "Metaballs", group: "Feel" },
+];
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
@@ -146,6 +173,16 @@ export default function Trainer() {
         />
         <div className="center-line" aria-hidden="true" />
         {visualMode === "highway" && <div className="shared-hit-line" aria-hidden="true" />}
+        {!(["flash", "highway"] as VisualMode[]).includes(visualMode) && (
+          <VisualStage
+            mode={visualMode}
+            left={left}
+            right={right}
+            bpm={bpm}
+            playhead={playhead}
+            pulses={pulses}
+          />
+        )}
       </section>
 
       <Options
@@ -226,7 +263,7 @@ function RhythmPad({
     >
       {visualMode === "flash" ? (
         <div className={`flash${synchronized ? " flash--sync" : ""}`} key={pulse} aria-hidden="true" />
-      ) : (
+      ) : visualMode === "highway" ? (
         <Highway
           side={side}
           value={value}
@@ -236,11 +273,177 @@ function RhythmPad({
           pulse={pulse}
           synchronized={synchronized}
         />
-      )}
+      ) : null}
       <span className="pad-label">{side}</span>
       <strong className="rhythm-number">{value}</strong>
       <span className="drag-hint">drag up · down</span>
     </div>
+  );
+}
+
+function VisualStage({
+  mode,
+  left,
+  right,
+  bpm,
+  playhead,
+  pulses,
+}: {
+  mode: VisualMode;
+  left: number;
+  right: number;
+  bpm: number;
+  playhead: number;
+  pulses: { left: number; right: number; leftSync: boolean; rightSync: boolean };
+}) {
+  const measureLength = (60_000 / bpm) * 4;
+  const phase = (playhead % measureLength) / measureLength;
+  const leftStep = Math.floor(phase * left);
+  const rightStep = Math.floor(phase * right);
+  const leftMarks = Array.from({ length: left });
+  const rightMarks = Array.from({ length: right });
+
+  return (
+    <div className={`visual-stage visual-stage--${mode}`} aria-hidden="true">
+      <div className="measure-progress" style={{ transform: `scaleX(${phase})` }} />
+
+      {mode === "orbit" && (
+        <div className="orbit-system">
+          <div className="orbit orbit--left">
+            <span style={{ transform: `rotate(${phase * left * 360}deg)` }}><i /></span>
+          </div>
+          <div className="orbit orbit--right">
+            <span style={{ transform: `rotate(${phase * right * 360}deg)` }}><i /></span>
+          </div>
+          <b className="orbit-marker" />
+        </div>
+      )}
+
+      {mode === "rings" && (
+        <div className="split-effect">
+          <span className={`pulse-ring pulse-ring--left${pulses.leftSync ? " is-sync" : ""}`} key={`l${pulses.left}`} />
+          <span className={`pulse-ring pulse-ring--right${pulses.rightSync ? " is-sync" : ""}`} key={`r${pulses.right}`} />
+        </div>
+      )}
+
+      {mode === "grid" && (
+        <div className="step-grid">
+          <MarkerRow marks={leftMarks} active={leftStep} side="left" />
+          <MarkerRow marks={rightMarks} active={rightStep} side="right" />
+          <span className="grid-playhead" style={{ left: `${phase * 100}%` }} />
+        </div>
+      )}
+
+      {mode === "pendulums" && (
+        <div className="pendulum-system">
+          <Pendulum side="left" angle={Math.sin(phase * left * Math.PI * 2) * 38} pulse={pulses.left} />
+          <Pendulum side="right" angle={Math.sin(phase * right * Math.PI * 2) * 38} pulse={pulses.right} />
+        </div>
+      )}
+
+      {mode === "ripples" && (
+        <div className="split-effect ripple-field">
+          <span className={`ripple ripple--left${pulses.leftSync ? " is-sync" : ""}`} key={`l${pulses.left}`} />
+          <span className={`ripple ripple--right${pulses.rightSync ? " is-sync" : ""}`} key={`r${pulses.right}`} />
+        </div>
+      )}
+
+      {mode === "radial" && (
+        <div className="radial-clock">
+          {[...leftMarks, ...rightMarks].map((_, index) => {
+            const isLeft = index < left;
+            const count = isLeft ? left : right;
+            const item = isLeft ? index : index - left;
+            return (
+              <i
+                className={isLeft ? "radial-mark radial-mark--left" : "radial-mark radial-mark--right"}
+                key={`${isLeft ? "l" : "r"}${item}`}
+                style={{
+                  transform: `rotate(${(item / count) * 360}deg) translateY(${
+                    isLeft ? "calc(-1 * min(17vh, 17vw))" : "calc(-1 * min(22vh, 22vw))"
+                  })`,
+                }}
+              />
+            );
+          })}
+          <span className="clock-hand" style={{ transform: `rotate(${phase * 360}deg)` }} />
+          <b />
+        </div>
+      )}
+
+      {mode === "particles" && (
+        <div className="split-effect particle-field">
+          <ParticleBurst side="left" pulse={pulses.left} sync={pulses.leftSync} />
+          <ParticleBurst side="right" pulse={pulses.right} sync={pulses.rightSync} />
+        </div>
+      )}
+
+      {mode === "blocks" && (
+        <div className="block-system">
+          <BlockRow marks={leftMarks} active={leftStep} side="left" />
+          <BlockRow marks={rightMarks} active={rightStep} side="right" />
+        </div>
+      )}
+
+      {mode === "lissajous" && <Lissajous left={left} right={right} phase={phase} />}
+
+      {mode === "metaballs" && (
+        <div className="metaball-field">
+          <span className="metaball metaball--left" style={{ transform: `translate(${Math.sin(phase * left * Math.PI * 2) * 22}vw, ${Math.cos(phase * left * Math.PI * 2) * 14}vh)` }} />
+          <span className="metaball metaball--right" style={{ transform: `translate(${Math.sin(phase * right * Math.PI * 2) * -22}vw, ${Math.cos(phase * right * Math.PI * 2) * -14}vh)` }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MarkerRow({ marks, active, side }: { marks: unknown[]; active: number; side: RhythmSide }) {
+  return (
+    <div className={`marker-row marker-row--${side}`}>
+      {marks.map((_, index) => <span className={index === active ? "is-active" : ""} key={index}>{index + 1}</span>)}
+    </div>
+  );
+}
+
+function BlockRow({ marks, active, side }: { marks: unknown[]; active: number; side: RhythmSide }) {
+  return (
+    <div className={`block-row block-row--${side}`}>
+      {marks.map((_, index) => <span className={index === active ? "is-active" : ""} key={index} />)}
+    </div>
+  );
+}
+
+function Pendulum({ side, angle, pulse }: { side: RhythmSide; angle: number; pulse: number }) {
+  return (
+    <div className={`pendulum pendulum--${side}`} style={{ transform: `rotate(${angle}deg)` }}>
+      <span /><i key={pulse} />
+    </div>
+  );
+}
+
+function ParticleBurst({ side, pulse, sync }: { side: RhythmSide; pulse: number; sync: boolean }) {
+  return (
+    <div className={`particles particles--${side}${sync ? " is-sync" : ""}`} key={pulse}>
+      {Array.from({ length: 12 }, (_, index) => (
+        <i key={index} style={{ "--particle": index } as React.CSSProperties} />
+      ))}
+    </div>
+  );
+}
+
+function Lissajous({ left, right, phase }: { left: number; right: number; phase: number }) {
+  const points = Array.from({ length: 181 }, (_, index) => {
+    const t = (index / 180) * Math.PI * 2;
+    return `${50 + Math.sin(left * t) * 39},${50 + Math.sin(right * t + Math.PI / 2) * 39}`;
+  }).join(" ");
+  const angle = phase * Math.PI * 2;
+  const x = 50 + Math.sin(left * angle) * 39;
+  const y = 50 + Math.sin(right * angle + Math.PI / 2) * 39;
+  return (
+    <svg className="lissajous" viewBox="0 0 100 100">
+      <polyline points={points} />
+      <circle cx={x} cy={y} r="2.2" />
+    </svg>
   );
 }
 
@@ -321,23 +524,23 @@ function Options({
       {open && (
         <div className="options-panel">
           <span className="options-title">Visual mode</span>
-          <div className="mode-picker">
-            <button
-              type="button"
-              className={visualMode === "flash" ? "is-selected" : ""}
-              onClick={() => onModeChange("flash")}
-            >
-              Flash
-            </button>
-            <button
-              type="button"
-              className={visualMode === "highway" ? "is-selected" : ""}
-              onClick={() => onModeChange("highway")}
-            >
-              Highway
-            </button>
-          </div>
-          <p>Notes arrive at the line when they sound.</p>
+          {(["Learn", "Follow", "Feel"] as const).map((group) => (
+            <div className="mode-group" key={group}>
+              <span>{group}</span>
+              <div className="mode-picker">
+                {VISUAL_MODES.filter((mode) => mode.group === group).map((mode) => (
+                  <button
+                    type="button"
+                    className={visualMode === mode.id ? "is-selected" : ""}
+                    onClick={() => onModeChange(mode.id)}
+                    key={mode.id}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
